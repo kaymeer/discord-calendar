@@ -10,7 +10,7 @@ Features:
 
 Author: github/kaymeer
 License: GNU General Public License v3.0
-Version: 1.0.0
+Version: 1.0.1
 """
 
 import os
@@ -388,6 +388,11 @@ async def set_daily_update(
         conn = get_db()
         c = conn.cursor()
         
+        # Get the server's timezone
+        c.execute('''SELECT timezone FROM server_settings WHERE guild_id = ?''', (interaction.guild_id,))
+        result = c.fetchone()
+        timezone = result[0] if result and result[0] else "UTC"
+        
         # First try to update existing settings
         c.execute('''UPDATE server_settings 
                      SET update_channel_id = ?, update_time = ?, update_days = ?
@@ -412,7 +417,7 @@ async def set_daily_update(
         conn.close()
         
         await interaction.response.send_message(
-            f"Daily updates configured for {channel.mention} at {time} UTC, showing the next {days} days.",
+            f"Daily updates configured for {channel.mention} at {time} ({timezone}), showing the next {days} days.",
             ephemeral=True
         )
     except ValueError:
@@ -595,8 +600,8 @@ async def view_calendar(interaction: discord.Interaction, days: int = 7):
         logger.info(f"Found {len(events)} events for next {days} days in guild {interaction.guild_id}")
         
         embed = discord.Embed(title=f"Upcoming Events (Next {days} days)", color=discord.Color.blue())
-        embed.description = f"**Timezone:** {current_timezone} | **Time Format:** {time_format}"
-        embed.set_footer(text="Calendar Bot by github/kaymeer")
+        embed.description = f"**Timezone:** {current_timezone}"
+        embed.set_footer(text="Developed by github/kaymeer")
         
         # Get the server's timezone
         server_tz = pytz.timezone(current_timezone)
@@ -964,12 +969,11 @@ async def daily_update():
                         # Create embed for calendar view
                         embed = discord.Embed(
                             title=f"Calendar Updates - Next {update_days} Days",
-                            description="Here are your upcoming events:",
+                            description=f"**Timezone:** {timezone}",
                             color=0x3498db,
-                            timestamp=datetime.now()
                         )
                         
-                        embed.set_footer(text=f"Time zone: {timezone}")
+                        embed.set_footer(text="Developed by github/kaymeer")
                         
                         # Add each date as a field with all events for that date, sorted by time
                         for date, day_events in events_by_date.items():
