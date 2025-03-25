@@ -1,6 +1,7 @@
 # Discord Calendar Bot
 
 A Discord bot that helps manage calendars for your server. Users can add events, view upcoming events, and receive daily updates.
+If you do now want to set this up yourself, feel free to use [this one](https://discord.com/oauth2/authorize?client_id=1353654752663175198).
 
 ## Features
 
@@ -141,6 +142,7 @@ If you encounter any issues or need help:
 3. Verify your Discord bot token is valid
 4. Check if the bot has the necessary permissions in your server
 5. Make sure you have the required role permissions
+6. You can contact me here for questions: [Discord server](https://discord.gg/2tuTNZacau)
 
 ## Security
 
