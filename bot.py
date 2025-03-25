@@ -10,7 +10,7 @@ Features:
 
 Author: github/kaymeer
 License: GNU General Public License v3.0
-Version: 1.0.1
+Version: 1.0.2
 """
 
 import os
@@ -962,6 +962,9 @@ async def daily_update():
                                 except:
                                     # If conversion fails, use the original time string
                                     formatted_time = time_str
+                            else:
+                                # Set "All day" for events with no time
+                                formatted_time = "All day"
                             
                             # Store the original time for sorting
                             events_by_date[date_for_key].append((title, time_str, formatted_time))
