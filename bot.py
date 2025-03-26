@@ -10,7 +10,7 @@ Features:
 
 Author: github/kaymeer
 License: GNU General Public License v3.0
-Version: 1.0.3
+Version: 1.1.0
 """
 
 # TODO: Tagging dates with: today, tomorrow, next week, next month, next year
@@ -858,6 +858,81 @@ async def set_timezone(interaction: discord.Interaction, timezone: str):
         logger.warning(f"Invalid timezone '{timezone}' attempted by {interaction.user.id} in guild {interaction.guild_id}")
         await interaction.response.send_message(
             "Invalid timezone. Please use a valid timezone name (e.g., 'America/New_York', 'Europe/London', 'Asia/Tokyo').",
+            ephemeral=True
+        )
+
+@bot.tree.command(
+    name="calendar_delete_event",
+    description="Delete an event from the calendar"
+)
+@app_commands.checks.cooldown(RATE_LIMIT, RATE_LIMIT_PER)
+async def delete_event(
+    interaction: discord.Interaction,
+    title: str,
+    day: int,
+    month: int,
+    year: int
+):
+    """Delete an event from the calendar"""
+    # Log command invocation
+    logger.info(f"Command 'calendar_delete_event' invoked by {interaction.user.id} in guild {interaction.guild_id}")
+    
+    if not await is_admin(interaction):
+        logger.warning(f"Unauthorized calendar_delete_event attempt by user {interaction.user.id} in guild {interaction.guild_id}")
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
+    
+    try:
+        # Validate date components
+        if not (1 <= day <= 31 and 1 <= month <= 12 and year >= datetime.now().year):
+            logger.warning(f"Invalid date components (day={day}, month={month}, year={year}) provided by user {interaction.user.id} in guild {interaction.guild_id}")
+            raise ValueError("Invalid date components")
+        
+        # Create date string in YYYY-MM-DD format for storage
+        date_str = f"{year:04d}-{month:02d}-{day:02d}"
+        
+        conn = get_db()
+        c = conn.cursor()
+        
+        # Get server's date format for display
+        c.execute('''SELECT date_format FROM server_settings WHERE guild_id = ?''', (interaction.guild_id,))
+        result = c.fetchone()
+        date_format = result[0] if result and result[0] else "DD/MM/YYYY"
+        
+        # Delete the event
+        c.execute('''DELETE FROM events 
+                     WHERE guild_id = ? 
+                     AND title = ? 
+                     AND event_date = ?''',
+                  (interaction.guild_id, title, date_str))
+        
+        deleted_count = c.rowcount
+        conn.commit()
+        conn.close()
+        
+        if deleted_count == 0:
+            logger.warning(f"No event found with title '{title}' on {date_str} in guild {interaction.guild_id}")
+            await interaction.response.send_message(
+                f"No event found with title '{title}' on {format_date(date_str, DATE_FORMATS[date_format])}.",
+                ephemeral=True
+            )
+        else:
+            logger.info(f"Deleted event '{title}' on {date_str} in guild {interaction.guild_id}")
+            await interaction.response.send_message(
+                f"Successfully deleted event '{title}' on {format_date(date_str, DATE_FORMATS[date_format])}.",
+                ephemeral=True
+            )
+            
+    except ValueError as e:
+        logger.warning(f"Event deletion error by user {interaction.user.id} in guild {interaction.guild_id}: {str(e)}")
+        await interaction.response.send_message(
+            f"Error: {str(e)}. Please provide valid date components (day: 1-31, month: 1-12, year: current or future).",
+            ephemeral=True
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error during event deletion by user {interaction.user.id} in guild {interaction.guild_id}: {str(e)}")
+        await interaction.response.send_message(
+            "An unexpected error occurred while deleting your event. Please try again later.",
             ephemeral=True
         )
 
