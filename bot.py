@@ -10,8 +10,17 @@ Features:
 
 Author: github/kaymeer
 License: GNU General Public License v3.0
-Version: 1.0.2
+Version: 1.0.3
 """
+
+# TODO: Tagging dates with: today, tomorrow, next week, next month, next year
+# TODO: Limit a server to only 100 events at a time to prevent abuse
+# TODO: Add a command to clear all events for a specific date
+# TODO: Add a command to delete an event
+# TODO: Add a command to edit an event
+# TODO: Add a command to view all events for a specific date
+# TODO: Add a command to view all events for a specific month
+# TODO: Add a command to view all events for a specific year
 
 import os
 import discord
@@ -316,16 +325,16 @@ async def on_error(event, *args, **kwargs):
     logger.error(f"Error details: {traceback.format_exc()}")
 
 @bot.tree.command(
-    name="set_admin_role",
+    name="calendar_set_permission_role",
     description="Set which role can use calendar commands (requires server administrator permissions)"
 )
-async def set_admin_role(interaction: discord.Interaction, role: discord.Role):
+async def set_permission_role(interaction: discord.Interaction, role: discord.Role):
     """Set which role can use calendar commands"""
     # Log command invocation
-    logger.info(f"Command 'set_admin_role' invoked by {interaction.user.id} in guild {interaction.guild_id}")
+    logger.info(f"Command 'calendar_set_permission_role' invoked by {interaction.user.id} in guild {interaction.guild_id}")
     
     if not interaction.user.guild_permissions.administrator:
-        logger.warning(f"Unauthorized set_admin_role attempt by user {interaction.user.id} in guild {interaction.guild_id}")
+        logger.warning(f"Unauthorized calendar_set_permission_role attempt by user {interaction.user.id} in guild {interaction.guild_id}")
         await interaction.response.send_message("Only server administrators can use this command.", ephemeral=True)
         return
     
@@ -348,18 +357,18 @@ async def set_admin_role(interaction: discord.Interaction, role: discord.Role):
         conn.commit()
         conn.close()
         
-        logger.info(f"Admin role set to '{role.name}' (ID: {role.id}) by user {interaction.user.id} in guild {interaction.guild_id}")
+        logger.info(f"Permission role set to '{role.name}' (ID: {role.id}) by user {interaction.user.id} in guild {interaction.guild_id}")
         
         await interaction.response.send_message(f"Permission role set to {role.mention}", ephemeral=True)
     except Exception as e:
-        logger.error(f"Error setting admin role by user {interaction.user.id} in guild {interaction.guild_id}: {e}")
+        logger.error(f"Error setting permission role by user {interaction.user.id} in guild {interaction.guild_id}: {e}")
         await interaction.response.send_message(
-            "An error occurred while setting the admin role. Please try again later.",
+            "An error occurred while setting the permission role. Please try again later.",
             ephemeral=True
         )
 
 @bot.tree.command(
-    name="set_daily_update",
+    name="calendar_set_daily_update",
     description="Enable daily updates in a channel. Updates will continue until disabled"
 )
 async def set_daily_update(
@@ -370,10 +379,10 @@ async def set_daily_update(
 ):
     """Configure daily update settings"""
     # Log command invocation
-    logger.info(f"Command 'set_daily_update' invoked by {interaction.user.id} in guild {interaction.guild_id}")
+    logger.info(f"Command 'calendar_set_daily_update' invoked by {interaction.user.id} in guild {interaction.guild_id}")
     
     if not await is_admin(interaction):
-        logger.warning(f"Unauthorized set_daily_update attempt by user {interaction.user.id} in guild {interaction.guild_id}")
+        logger.warning(f"Unauthorized calendar_set_daily_update attempt by user {interaction.user.id} in guild {interaction.guild_id}")
         await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
     
@@ -434,16 +443,16 @@ async def set_daily_update(
         )
 
 @bot.tree.command(
-    name="disable_daily_update",
+    name="calendar_disable_daily_update",
     description="Disable daily updates for this server"
 )
 async def disable_daily_update(interaction: discord.Interaction):
     """Disable daily updates"""
     # Log command invocation
-    logger.info(f"Command 'disable_daily_update' invoked by {interaction.user.id} in guild {interaction.guild_id}")
+    logger.info(f"Command 'calendar_disable_daily_update' invoked by {interaction.user.id} in guild {interaction.guild_id}")
     
     if not await is_admin(interaction):
-        logger.warning(f"Unauthorized disable_daily_update attempt by user {interaction.user.id} in guild {interaction.guild_id}")
+        logger.warning(f"Unauthorized calendar_disable_daily_update attempt by user {interaction.user.id} in guild {interaction.guild_id}")
         await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
     
@@ -462,7 +471,7 @@ async def disable_daily_update(interaction: discord.Interaction):
     await interaction.response.send_message("Daily updates have been disabled.", ephemeral=True)
 
 @bot.tree.command(
-    name="add_event",
+    name="calendar_add_event",
     description="Add a new event to the calendar"
 )
 @app_commands.checks.cooldown(RATE_LIMIT, RATE_LIMIT_PER)
@@ -476,10 +485,10 @@ async def add_event(
 ):
     """Add a new event to the calendar"""
     # Log command invocation
-    logger.info(f"Command 'add_event' invoked by {interaction.user.id} in guild {interaction.guild_id}")
+    logger.info(f"Command 'calendar_add_event' invoked by {interaction.user.id} in guild {interaction.guild_id}")
     
     if not await is_admin(interaction):
-        logger.warning(f"Unauthorized add_event attempt by user {interaction.user.id} in guild {interaction.guild_id}")
+        logger.warning(f"Unauthorized calendar_add_event attempt by user {interaction.user.id} in guild {interaction.guild_id}")
         await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
     
@@ -547,17 +556,17 @@ async def add_event(
         )
 
 @bot.tree.command(
-    name="view_calendar",
+    name="calendar_view",
     description="View upcoming events"
 )
 @app_commands.checks.cooldown(RATE_LIMIT, RATE_LIMIT_PER)
 async def view_calendar(interaction: discord.Interaction, days: int = 7):
     """View upcoming events for the specified number of days"""
     # Log command invocation
-    logger.info(f"Command 'view_calendar' invoked by {interaction.user.id} in guild {interaction.guild_id}")
+    logger.info(f"Command 'calendar_view' invoked by {interaction.user.id} in guild {interaction.guild_id}")
     
     if not await is_admin(interaction):
-        logger.warning(f"Unauthorized view_calendar attempt by user {interaction.user.id} in guild {interaction.guild_id}")
+        logger.warning(f"Unauthorized calendar_view attempt by user {interaction.user.id} in guild {interaction.guild_id}")
         await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
     
@@ -695,16 +704,16 @@ async def view_calendar(interaction: discord.Interaction, days: int = 7):
         )
 
 @bot.tree.command(
-    name="set_date_format",
+    name="calendar_set_date_format",
     description="Set the preferred date format for the server"
 )
 async def set_date_format(interaction: discord.Interaction, format_name: str):
     """Set the preferred date format for the server"""
     # Log command invocation
-    logger.info(f"Command 'set_date_format' invoked by {interaction.user.id} in guild {interaction.guild_id}")
+    logger.info(f"Command 'calendar_set_date_format' invoked by {interaction.user.id} in guild {interaction.guild_id}")
     
     if not await is_admin(interaction):
-        logger.warning(f"Unauthorized set_date_format attempt by user {interaction.user.id} in guild {interaction.guild_id}")
+        logger.warning(f"Unauthorized calendar_set_date_format attempt by user {interaction.user.id} in guild {interaction.guild_id}")
         await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
     
@@ -749,16 +758,16 @@ async def set_date_format(interaction: discord.Interaction, format_name: str):
         )
 
 @bot.tree.command(
-    name="set_time_format",
+    name="calendar_set_time_format",
     description="Set the preferred time format (12-hour or 24-hour) for the server"
 )
 async def set_time_format(interaction: discord.Interaction, format_name: str):
     """Set the preferred time format for the server"""
     # Log command invocation
-    logger.info(f"Command 'set_time_format' invoked by {interaction.user.id} in guild {interaction.guild_id}")
+    logger.info(f"Command 'calendar_set_time_format' invoked by {interaction.user.id} in guild {interaction.guild_id}")
     
     if not await is_admin(interaction):
-        logger.warning(f"Unauthorized set_time_format attempt by user {interaction.user.id} in guild {interaction.guild_id}")
+        logger.warning(f"Unauthorized calendar_set_time_format attempt by user {interaction.user.id} in guild {interaction.guild_id}")
         await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
     
@@ -803,16 +812,16 @@ async def set_time_format(interaction: discord.Interaction, format_name: str):
         )
 
 @bot.tree.command(
-    name="set_timezone",
+    name="calendar_set_timezone",
     description="Set the server's timezone"
 )
 async def set_timezone(interaction: discord.Interaction, timezone: str):
     """Set the server's timezone"""
     # Log command invocation
-    logger.info(f"Command 'set_timezone' invoked by {interaction.user.id} in guild {interaction.guild_id}")
+    logger.info(f"Command 'calendar_set_timezone' invoked by {interaction.user.id} in guild {interaction.guild_id}")
     
     if not await is_admin(interaction):
-        logger.warning(f"Unauthorized set_timezone attempt by user {interaction.user.id} in guild {interaction.guild_id}")
+        logger.warning(f"Unauthorized calendar_set_timezone attempt by user {interaction.user.id} in guild {interaction.guild_id}")
         await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
     

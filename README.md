@@ -28,14 +28,14 @@ When adding the bot to your server, it needs the following permissions:
 
 ## Commands
 
-- `/add_event <title> <day> <month> <year> [time]` - Add a new event to the calendar
-- `/view_calendar [days]` - View upcoming events (default 7 days, max 365 days, requires calendar permissions)
-- `/set_daily_update <channel> <time> [days]` - Enable daily updates in a channel. Updates will continue until disabled. Days parameter can be 1-30 (default 7)
-- `/disable_daily_update` - Disable daily updates for this server
-- `/set_admin_role <role>` - Set which role can use calendar commands (requires server administrator permissions)
-- `/set_date_format <format>` - Set the preferred date format
-- `/set_time_format <format>` - Set the preferred time format (12-hour or 24-hour)
-- `/set_timezone <timezone>` - Set the server's timezone
+- `/calendar_add_event <title> <day> <month> <year> [time]` - Add a new event to the calendar
+- `/calendar_view [days]` - View upcoming events (default 7 days, max 365 days, requires calendar permissions)
+- `/calendar_set_daily_update <channel> <time> [days]` - Enable daily updates in a channel. Updates will continue until disabled. Days parameter can be 1-30 (default 7)
+- `/calendar_disable_daily_update` - Disable daily updates for this server
+- `/calendar_set_permission_role <role>` - Set which role can use calendar commands (requires server administrator permissions)
+- `/calendar_set_date_format <format>` - Set the preferred date format
+- `/calendar_set_time_format <format>` - Set the preferred time format (12-hour or 24-hour)
+- `/calendar_set_timezone <timezone>` - Set the server's timezone
 
 ## Date and Time Formats
 
@@ -90,7 +90,7 @@ The bot uses a two-tier permission system:
 2. Calendar permissions (for using calendar features)
 
 To set up the bot:
-1. Server administrators must use `/set_admin_role` to designate which role can use calendar commands
+1. Server administrators must use `/calendar_set_permission_role` to designate which role can use calendar commands
 2. Users with that role or administrator permissions can then use all calendar features
 
 ## Rate Limiting
