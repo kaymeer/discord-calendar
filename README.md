@@ -16,6 +16,7 @@ If you do now want to set this up yourself, feel free to use [this one](https://
 - 12-hour and 24-hour time format support
 - Timezone support for global servers
 - Automatic cleanup of events that have passed more than 7 days ago
+- Sneaker release dates integration (trending releases only)
 
 ## Required Bot Permissions
 
@@ -28,14 +29,21 @@ When adding the bot to your server, it needs the following permissions:
 
 ## Commands
 
+### Basic Calendar Operations
 - `/calendar_add_event <title> <day> <month> <year> [time]` - Add a new event to the calendar
 - `/calendar_view [days]` - View upcoming events (default 7 days, max 365 days, requires calendar permissions)
+- `/calendar_delete_event <title> <day> <month> <year>` - Delete an event from the calendar
+
+### Daily Updates
 - `/calendar_set_daily_update <channel> <time> [days]` - Enable daily updates in a channel. Updates will continue until disabled. Days parameter can be 1-30 (default 7)
 - `/calendar_disable_daily_update` - Disable daily updates for this server
+
+### Server Configuration
 - `/calendar_set_permission_role <role>` - Set which role can use calendar commands (requires server administrator permissions)
 - `/calendar_set_date_format <format>` - Set the preferred date format
 - `/calendar_set_time_format <format>` - Set the preferred time format (12-hour or 24-hour)
 - `/calendar_set_timezone <timezone>` - Set the server's timezone
+- `/calendar_toggle_feature feature: <feature_name> enabled: <true/false>` - Enable or disable optional calendar features
 
 ## Date and Time Formats
 
@@ -73,6 +81,16 @@ Common timezone names:
 - Asia/Shanghai
 - Australia/Sydney
 
+## Sneaker Releases
+
+The bot can display trending sneaker releases in your calendar:
+
+- Sneaker releases are fetched automatically every 6 hours
+- Only trending releases are displayed to keep the calendar clean
+- Each sneaker name is a clickable link to its product page
+- Sneaker releases are shown as all-day events
+- Server administrators can enable or disable this feature using `/calendar_toggle_feature`
+
 ## Admin Configuration
 
 Server administrators can:
@@ -82,6 +100,7 @@ Server administrators can:
 - Set the preferred date format
 - Set the preferred time format (12-hour or 24-hour)
 - Set the server's timezone
+- Enable or disable features using the `/calendar_toggle_feature` command
 
 ## Permissions
 

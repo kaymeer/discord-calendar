@@ -10,7 +10,7 @@ Features:
 
 Author: github/kaymeer
 License: GNU General Public License v3.0
-Version: 1.1.0
+Version: 1.2.0
 """
 
 # TODO: Tagging dates with: today, tomorrow, next week, next month, next year
@@ -36,6 +36,7 @@ from dotenv import load_dotenv
 from discord.ext.commands import cooldown, BucketType
 from logging.handlers import RotatingFileHandler
 import sys
+import sneaker_releases  # Import the sneaker releases module
 
 # Configure logging
 log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -123,7 +124,8 @@ def init_db():
                   update_days INTEGER DEFAULT 7,
                   date_format TEXT DEFAULT 'DD/MM/YYYY',
                   time_format TEXT DEFAULT '24h',
-                  timezone TEXT DEFAULT 'UTC')''')
+                  timezone TEXT DEFAULT 'UTC',
+                  sneaker_releases_enabled INTEGER DEFAULT 0)''')
     
     # Check if the created_timezone column exists, and add it if not
     try:
@@ -132,6 +134,14 @@ def init_db():
         # Column doesn't exist, add it
         c.execute("ALTER TABLE events ADD COLUMN created_timezone TEXT")
         logger.info("Added created_timezone column to events table")
+    
+    # Check if the sneaker_releases_enabled column exists, and add it if not
+    try:
+        c.execute("SELECT sneaker_releases_enabled FROM server_settings LIMIT 1")
+    except sqlite3.OperationalError:
+        # Column doesn't exist, add it
+        c.execute("ALTER TABLE server_settings ADD COLUMN sneaker_releases_enabled INTEGER DEFAULT 0")
+        logger.info("Added sneaker_releases_enabled column to server_settings table")
     
     conn.commit()
     conn.close()
@@ -306,6 +316,13 @@ async def on_ready():
     if not cleanup_old_events.is_running():
         cleanup_old_events.start()
         logger.info("Cleanup task for old events started")
+    
+    if not fetch_sneaker_releases.is_running():
+        fetch_sneaker_releases.start()
+        logger.info("Sneaker releases fetch task started")
+        
+        # Remove the initial fetch since the task will handle it
+        # The before_loop handler will ensure it doesn't run immediately
 
 @bot.event
 async def on_guild_join(guild):
@@ -582,13 +599,14 @@ async def view_calendar(interaction: discord.Interaction, days: int = 7):
         c = conn.cursor()
         
         # Get server's preferences
-        c.execute('''SELECT date_format, time_format, timezone 
+        c.execute('''SELECT date_format, time_format, timezone, sneaker_releases_enabled 
                      FROM server_settings 
                      WHERE guild_id = ?''', (interaction.guild_id,))
         result = c.fetchone()
         date_format = result[0] if result and result[0] else "DD/MM/YYYY"
         time_format = result[1] if result and result[1] else "24h"
         current_timezone = result[2] if result and result[2] else "UTC"
+        sneaker_releases_enabled = result[3] if result and result[3] else 0
         
         # Get all events with their creation dates and timezones
         c.execute('''SELECT e.title, e.event_date, e.event_time, e.created_timezone
@@ -601,13 +619,7 @@ async def view_calendar(interaction: discord.Interaction, days: int = 7):
         events = c.fetchall()
         conn.close()
         
-        if not events:
-            logger.info(f"No events found for next {days} days in guild {interaction.guild_id}")
-            await interaction.response.send_message(f"No upcoming events in the next {days} days.", ephemeral=True)
-            return
-        
-        logger.info(f"Found {len(events)} events for next {days} days in guild {interaction.guild_id}")
-        
+        # Create embed for calendar view
         embed = discord.Embed(title=f"Upcoming Events (Next {days} days)", color=discord.Color.blue())
         embed.description = f"**Timezone:** {current_timezone}"
         embed.set_footer(text="Developed by github/kaymeer")
@@ -617,6 +629,8 @@ async def view_calendar(interaction: discord.Interaction, days: int = 7):
         
         # Group events by date
         events_by_date = {}
+        
+        # Process regular events
         for title, date, time_str, created_timezone in events:
             # Skip processing for all-day events
             if not time_str:
@@ -680,22 +694,174 @@ async def view_calendar(interaction: discord.Interaction, days: int = 7):
                 formatted_time = datetime.strptime(time_str, "%H:%M").strftime(TIME_FORMATS[time_format])
                 events_by_date[display_date].append((title, time_str, formatted_time))
         
-        # Add each date as a field with all events for that date, sorted by time
-        for date, day_events in events_by_date.items():
-            # Sort by the original time (the second element in the tuple)
-            day_events.sort(key=lambda x: x[1] if x[1] else "00:00")
-            
-            event_list = []
-            for title, _, formatted_time in day_events:
-                event_list.append(f"**{formatted_time}** - {title}")
-            
-            embed.add_field(
-                name=f"{date}",
-                value="\n".join(event_list),
-                inline=False
-            )
+        # Add sneaker releases if enabled
+        if sneaker_releases_enabled:
+            logger.info(f"Adding sneaker releases to calendar view for guild {interaction.guild_id}")
+            try:
+                # Get upcoming sneaker releases (now only trending releases)
+                upcoming_releases = sneaker_releases.get_upcoming_sneaker_releases(days)
+                
+                if upcoming_releases:
+                    logger.info(f"Found {len(upcoming_releases)} upcoming trending sneaker releases")
+                    
+                    # Group releases by date for better counting
+                    releases_by_date = {}
+                    for release in upcoming_releases:
+                        # Try to parse the release date
+                        release_date = None
+                        date_str = release.get('release_date', '')
+                        
+                        # Try different date formats
+                        for fmt in ['%B %d, %Y', '%b %d, %Y', '%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y']:
+                            try:
+                                date_obj = datetime.strptime(date_str, fmt)
+                                release_date = date_obj.strftime(DATE_FORMATS[date_format])
+                                break
+                            except ValueError:
+                                continue
+                        
+                        if release_date:
+                            if release_date not in releases_by_date:
+                                releases_by_date[release_date] = []
+                            releases_by_date[release_date].append(release)
+                    
+                    # Add sneaker releases to the events by date dictionary
+                    for release_date, releases in releases_by_date.items():
+                        if release_date not in events_by_date:
+                            events_by_date[release_date] = []
+                        
+                        # Add all trending releases (no need to limit since we're only showing trending)
+                        for release in releases:
+                            # Format the sneaker release
+                            formatted_release = sneaker_releases.format_sneaker_release(release, DATE_FORMATS[date_format])
+                            
+                            # Add with "All day" time since sneaker releases don't have specific times
+                            events_by_date[release_date].append((formatted_release, "00:00", "All day"))
+            except Exception as e:
+                logger.error(f"Error adding sneaker releases to calendar view: {e}")
+                logger.error(f"Sneaker releases error details: {traceback.format_exc()}")
         
-        await interaction.response.send_message(embed=embed)
+        # Check if we have too many events and need to split into multiple embeds
+        total_events = sum(len(events) for events in events_by_date.values())
+        if total_events > 25:  # If we have more than 25 events, split into multiple embeds
+            # Sort dates chronologically
+            sorted_dates = sorted(events_by_date.keys())
+            
+            # Create multiple embeds
+            embeds = []
+            current_embed = discord.Embed(title=f"Upcoming Events (Next {days} days) - Part 1", color=discord.Color.blue())
+            current_embed.description = f"**Timezone:** {current_timezone}"
+            current_embed.set_footer(text="Developed by github/kaymeer")
+            
+            current_part = 1
+            events_count = 0
+            
+            for date in sorted_dates:
+                # Sort by the original time (the second element in the tuple)
+                day_events = events_by_date[date]
+                day_events.sort(key=lambda x: x[1] if x[1] else "00:00")
+                
+                event_list = []
+                for title, _, formatted_time in day_events:
+                    event_list.append(f"**{formatted_time}** - {title}")
+                
+                # Check if adding this field would exceed Discord's limit
+                field_value = "\n".join(event_list)
+                if len(field_value) > 1000:  # Leave some room for safety
+                    # Split the events into smaller chunks
+                    chunks = []
+                    current_chunk = []
+                    current_length = 0
+                    
+                    for event in event_list:
+                        if current_length + len(event) + 1 > 1000:  # +1 for newline
+                            chunks.append("\n".join(current_chunk))
+                            current_chunk = [event]
+                            current_length = len(event)
+                        else:
+                            current_chunk.append(event)
+                            current_length += len(event) + 1
+                    
+                    if current_chunk:
+                        chunks.append("\n".join(current_chunk))
+                    
+                    # Add each chunk as a separate field
+                    for i, chunk in enumerate(chunks):
+                        if len(current_embed.fields) >= 25:  # Discord limit for fields
+                            embeds.append(current_embed)
+                            current_part += 1
+                            current_embed = discord.Embed(title=f"Upcoming Events (Next {days} days) - Part {current_part}", color=discord.Color.blue())
+                            current_embed.description = f"**Timezone:** {current_timezone}"
+                            current_embed.set_footer(text="Developed by github/kaymeer")
+                        
+                        chunk_name = f"{date} (Part {i+1})" if len(chunks) > 1 else date
+                        current_embed.add_field(name=chunk_name, value=chunk, inline=False)
+                else:
+                    # Check if we need to create a new embed
+                    if len(current_embed.fields) >= 25:  # Discord limit for fields
+                        embeds.append(current_embed)
+                        current_part += 1
+                        current_embed = discord.Embed(title=f"Upcoming Events (Next {days} days) - Part {current_part}", color=discord.Color.blue())
+                        current_embed.description = f"**Timezone:** {current_timezone}"
+                        current_embed.set_footer(text="Developed by github/kaymeer")
+                    
+                    current_embed.add_field(name=date, value=field_value, inline=False)
+                
+                events_count += len(day_events)
+                
+                # If we've added too many events, create a new embed
+                if events_count >= 25 and len(embeds) < 10:  # Limit to 10 embeds to avoid spam
+                    embeds.append(current_embed)
+                    current_part += 1
+                    current_embed = discord.Embed(title=f"Upcoming Events (Next {days} days) - Part {current_part}", color=discord.Color.blue())
+                    current_embed.description = f"**Timezone:** {current_timezone}"
+                    current_embed.set_footer(text="Developed by github/kaymeer")
+                    events_count = 0
+            
+            # Add the last embed if it has fields
+            if current_embed.fields:
+                embeds.append(current_embed)
+            
+            # Send all embeds
+            await interaction.response.send_message(embeds=embeds)
+        else:
+            # Add each date as a field with all events for that date, sorted by time
+            for date, day_events in events_by_date.items():
+                # Sort by the original time (the second element in the tuple)
+                day_events.sort(key=lambda x: x[1] if x[1] else "00:00")
+                
+                event_list = []
+                for title, _, formatted_time in day_events:
+                    event_list.append(f"**{formatted_time}** - {title}")
+                
+                # Check if the field value would exceed Discord's limit
+                field_value = "\n".join(event_list)
+                if len(field_value) > 1000:  # Leave some room for safety
+                    # Split the events into smaller chunks
+                    chunks = []
+                    current_chunk = []
+                    current_length = 0
+                    
+                    for event in event_list:
+                        if current_length + len(event) + 1 > 1000:  # +1 for newline
+                            chunks.append("\n".join(current_chunk))
+                            current_chunk = [event]
+                            current_length = len(event)
+                        else:
+                            current_chunk.append(event)
+                            current_length += len(event) + 1
+                    
+                    if current_chunk:
+                        chunks.append("\n".join(current_chunk))
+                    
+                    # Add each chunk as a separate field
+                    for i, chunk in enumerate(chunks):
+                        chunk_name = f"{date} (Part {i+1})" if len(chunks) > 1 else date
+                        embed.add_field(name=chunk_name, value=chunk, inline=False)
+                else:
+                    embed.add_field(name=date, value=field_value, inline=False)
+            
+            await interaction.response.send_message(embed=embed)
     except Exception as e:
         logger.error(f"Error displaying calendar for user {interaction.user.id} in guild {interaction.guild_id}: {e}")
         await interaction.response.send_message(
@@ -862,6 +1028,101 @@ async def set_timezone(interaction: discord.Interaction, timezone: str):
         )
 
 @bot.tree.command(
+    name="calendar_toggle_feature",
+    description="Enable or disable various calendar features"
+)
+@app_commands.describe(
+    feature="The feature to toggle",
+    enabled="Whether to enable or disable the feature"
+)
+@app_commands.choices(feature=[
+    app_commands.Choice(name="Sneaker Releases", value="sneaker_releases"),
+    # Add more choices here in the future as you add more features
+])
+async def toggle_feature(
+    interaction: discord.Interaction, 
+    feature: str, 
+    enabled: bool
+):
+    """Enable or disable various calendar features"""
+    # Log command invocation
+    logger.info(f"Command 'calendar_toggle_feature' invoked by {interaction.user.id} in guild {interaction.guild_id}")
+    
+    if not await is_admin(interaction):
+        logger.warning(f"Unauthorized calendar_toggle_feature attempt by user {interaction.user.id} in guild {interaction.guild_id}")
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
+    
+    # Define valid features and their corresponding database columns
+    valid_features = {
+        "sneaker_releases": "sneaker_releases_enabled"
+        # Add more features here in the future
+    }
+    
+    feature = feature.lower()
+    if feature not in valid_features:
+        feature_list = ", ".join(valid_features.keys())
+        logger.warning(f"Invalid feature '{feature}' attempted by user {interaction.user.id} in guild {interaction.guild_id}")
+        await interaction.response.send_message(
+            f"Invalid feature. Please choose from: {feature_list}",
+            ephemeral=True
+        )
+        return
+    
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        
+        db_column = valid_features[feature]
+        
+        # First try to update existing settings
+        c.execute(f'''UPDATE server_settings 
+                     SET {db_column} = ?
+                     WHERE guild_id = ?''',
+                  (1 if enabled else 0, interaction.guild_id))
+        
+        # If no row was updated, insert a new one
+        if c.rowcount == 0:
+            # Start with default values
+            defaults = {
+                'date_format': 'DD/MM/YYYY', 
+                'time_format': '24h', 
+                'update_days': 7,
+                db_column: 1 if enabled else 0
+            }
+            
+            # Create the SQL query dynamically
+            columns = ['guild_id'] + list(defaults.keys())
+            placeholders = ['?'] * len(columns)
+            values = [interaction.guild_id] + list(defaults.values())
+            
+            sql = f'''INSERT INTO server_settings 
+                     ({', '.join(columns)})
+                     VALUES ({', '.join(placeholders)})'''
+            
+            c.execute(sql, values)
+        
+        conn.commit()
+        conn.close()
+        
+        status = "enabled" if enabled else "disabled"
+        logger.info(f"Feature '{feature}' {status} for guild {interaction.guild_id}")
+        
+        # Format the feature name for display (convert snake_case to title case with spaces)
+        display_name = " ".join(word.capitalize() for word in feature.split("_"))
+        
+        await interaction.response.send_message(
+            f"{display_name} have been {status} in your calendar.",
+            ephemeral=True
+        )
+    except Exception as e:
+        logger.error(f"Error toggling feature '{feature}' by user {interaction.user.id} in guild {interaction.guild_id}: {e}")
+        await interaction.response.send_message(
+            f"An error occurred while toggling the {feature} feature. Please try again later.",
+            ephemeral=True
+        )
+
+@bot.tree.command(
     name="calendar_delete_event",
     description="Delete an event from the calendar"
 )
@@ -977,6 +1238,7 @@ async def daily_update():
         update_time = server_dict['update_time']
         update_days = server_dict['update_days']
         timezone = server_dict['timezone']
+        sneaker_releases_enabled = server_dict.get('sneaker_releases_enabled', 0)
         
         try:
             # Get server's timezone, defaulting to UTC if None
@@ -1053,6 +1315,45 @@ async def daily_update():
                             # Store the original time for sorting
                             events_by_date[date_for_key].append((title, time_str, formatted_time))
                         
+                        # Add sneaker releases if enabled
+                        if sneaker_releases_enabled:
+                            logger.info(f"Adding sneaker releases to daily update for guild {guild_id}")
+                            try:
+                                # Get upcoming sneaker releases
+                                upcoming_releases = sneaker_releases.get_upcoming_sneaker_releases(update_days)
+                                
+                                if upcoming_releases:
+                                    logger.info(f"Found {len(upcoming_releases)} upcoming sneaker releases")
+                                    
+                                    # Add sneaker releases to the events by date
+                                    for release in upcoming_releases:
+                                        # Try to parse the release date
+                                        release_date = None
+                                        date_str = release.get('release_date', '')
+                                        
+                                        # Try different date formats
+                                        for fmt in ['%B %d, %Y', '%b %d, %Y', '%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y']:
+                                            try:
+                                                date_obj = datetime.strptime(date_str, fmt)
+                                                release_date = date_obj.strftime(date_fmt)
+                                                break
+                                            except ValueError:
+                                                continue
+                                        
+                                        if release_date:
+                                            # Format the sneaker release
+                                            formatted_release = sneaker_releases.format_sneaker_release(release, date_fmt)
+                                            
+                                            # Add to the events by date dictionary
+                                            if release_date not in events_by_date:
+                                                events_by_date[release_date] = []
+                                            
+                                            # Add with "All day" time since sneaker releases don't have specific times
+                                            events_by_date[release_date].append((formatted_release, "00:00", "All day"))
+                            except Exception as e:
+                                logger.error(f"Error adding sneaker releases to daily update: {e}")
+                                logger.error(f"Sneaker releases error details: {traceback.format_exc()}")
+                        
                         # Create embed for calendar view
                         embed = discord.Embed(
                             title=f"Calendar Updates - Next {update_days} Days",
@@ -1115,6 +1416,21 @@ async def cleanup_old_events():
     except Exception as e:
         logger.error(f"Error during event cleanup task: {e}")
         logger.error(f"Cleanup error details: {traceback.format_exc()}")
+
+@tasks.loop(hours=24)
+async def fetch_sneaker_releases():
+    """
+    Task to fetch sneaker releases every 24 hours.
+    
+    This task runs once per day and updates the global sneaker releases data.
+    """
+    try:
+        logger.info("Running sneaker releases fetch task")
+        sneaker_releases.get_sneaker_releases()
+        logger.info("Sneaker releases fetch task completed")
+    except Exception as e:
+        logger.error(f"Error during sneaker releases fetch task: {e}")
+        logger.error(f"Fetch error details: {traceback.format_exc()}")
 
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
