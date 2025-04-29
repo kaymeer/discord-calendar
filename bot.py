@@ -10,7 +10,7 @@ Features:
 
 Author: github/kaymeer
 License: GNU General Public License v3.0
-Version: 1.2.0
+Version: 1.2.1
 """
 
 # TODO: Tagging dates with: today, tomorrow, next week, next month, next year
@@ -263,6 +263,39 @@ def format_time(time_str: str, format_str: str, timezone: str = 'UTC') -> str:
     except Exception as e:
         logger.error(f"Error formatting time: {e}")
         return time_str  # Return original if conversion fails
+
+def sort_dates(dates, date_format):
+    """
+    Sort a list of date strings by their actual date values.
+    
+    Args:
+        dates: List of date strings formatted according to date_format
+        date_format: The format string used for the dates
+        
+    Returns:
+        Sorted list of date strings
+    """
+    def parse_date(date_str):
+        # Try to parse the date using the given format
+        try:
+            if date_format == "DD/MM/YYYY":
+                return datetime.strptime(date_str, "%d/%m/%Y")
+            elif date_format == "MM/DD/YYYY":
+                return datetime.strptime(date_str, "%m/%d/%Y")
+            elif date_format == "YYYY-MM-DD":
+                return datetime.strptime(date_str, "%Y-%m-%d")
+            else:
+                # Fallback to trying common formats
+                for fmt in ["%d/%m/%Y", "%m/%d/%Y", "%Y-%m-%d"]:
+                    try:
+                        return datetime.strptime(date_str, fmt)
+                    except ValueError:
+                        continue
+                return datetime.now()  # Default if parsing fails
+        except ValueError:
+            return datetime.now()  # Default if parsing fails
+    
+    return sorted(dates, key=parse_date)
 
 async def is_admin(interaction: discord.Interaction) -> bool:
     """
@@ -745,7 +778,7 @@ async def view_calendar(interaction: discord.Interaction, days: int = 7):
         total_events = sum(len(events) for events in events_by_date.values())
         if total_events > 25:  # If we have more than 25 events, split into multiple embeds
             # Sort dates chronologically
-            sorted_dates = sorted(events_by_date.keys())
+            sorted_dates = sort_dates(events_by_date.keys(), date_format)
             
             # Create multiple embeds
             embeds = []
@@ -826,7 +859,9 @@ async def view_calendar(interaction: discord.Interaction, days: int = 7):
             await interaction.response.send_message(embeds=embeds)
         else:
             # Add each date as a field with all events for that date, sorted by time
-            for date, day_events in events_by_date.items():
+            for date in sort_dates(events_by_date.keys(), date_format):
+                # Get events for this date
+                day_events = events_by_date[date]
                 # Sort by the original time (the second element in the tuple)
                 day_events.sort(key=lambda x: x[1] if x[1] else "00:00")
                 
@@ -1364,7 +1399,9 @@ async def daily_update():
                         embed.set_footer(text="Developed by github/kaymeer")
                         
                         # Add each date as a field with all events for that date, sorted by time
-                        for date, day_events in events_by_date.items():
+                        for date in sort_dates(events_by_date.keys(), date_format):
+                            # Get events for this date
+                            day_events = events_by_date[date]
                             # Sort by the original time (the second element in the tuple)
                             day_events.sort(key=lambda x: x[1] if x[1] else "00:00")
                             
