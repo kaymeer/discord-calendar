@@ -10,7 +10,7 @@ Features:
 
 Author: github/kaymeer
 License: GNU General Public License v3.0
-Version: 1.2.1
+Version: 1.2.2
 """
 
 # TODO: Tagging dates with: today, tomorrow, next week, next month, next year
@@ -655,7 +655,7 @@ async def view_calendar(interaction: discord.Interaction, days: int = 7):
         # Create embed for calendar view
         embed = discord.Embed(title=f"Upcoming Events (Next {days} days)", color=discord.Color.blue())
         embed.description = f"**Timezone:** {current_timezone}"
-        embed.set_footer(text="Developed by github/kaymeer")
+        embed.set_footer(text="Report issues: discord.gg/2tuTNZacau")
         
         # Get the server's timezone
         server_tz = pytz.timezone(current_timezone)
